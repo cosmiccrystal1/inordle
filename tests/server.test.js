@@ -3,17 +3,23 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {randomUUID} from 'node:crypto';
-import {demoPuzzle,dayKey} from '../game.js';
+import {demoPuzzle,dayKey,normalizeWord} from '../game.js';
 test('server validates, locks, gates results, and counts distinct players',async()=>{
  const db=new PGlite();
  await db.exec(`create role anon; create role authenticated; create schema auth; create table auth.users(id uuid primary key); create function auth.uid() returns uuid language sql as $$ select nullif(current_setting('test.uid',true),'')::uuid $$;`);
  await db.exec(fs.readFileSync(new URL('../supabase/schema.sql',import.meta.url),'utf8'));
  await db.exec(fs.readFileSync(new URL('../supabase/dictionary.sql',import.meta.url),'utf8'));
+ for(const file of fs.readdirSync(new URL('../supabase/word-forms/',import.meta.url)).sort())await db.exec(fs.readFileSync(new URL('../supabase/word-forms/'+file,import.meta.url),'utf8'));
+ // Simulate upgrading an existing live site with today's GRT trail.
+ await db.exec("create function public.trail(d date) returns text language sql stable as $$ select 'GRT'::text $$;");
+ await db.exec(fs.readFileSync(new URL('../supabase/update-v2/01-prepare.sql',import.meta.url),'utf8'));
  await db.exec(fs.readFileSync(new URL('../supabase/trails.sql',import.meta.url),'utf8'));
- const parity=await db.query("select d::date::text as day, public.trail(d::date) as letters from generate_series(date '2026-01-01',date '2028-12-31',interval '1 day') as d");
+ await db.exec(fs.readFileSync(new URL('../supabase/update-v2/02-enable-normalization.sql',import.meta.url),'utf8'));
+ assert.equal((await db.query("select public.trail((now() at time zone 'America/New_York')::date) as letters")).rows[0].letters,'GRT');
+ const parity=await db.query("select d::date::text as day, public.trail_weighted(d::date) as letters from generate_series(date '2026-01-01',date '2028-12-31',interval '1 day') as d");
  for(const row of parity.rows)assert.equal(row.letters,demoPuzzle(row.day),row.day);
- const day=dayKey(), letters=demoPuzzle(day);
- const answer=(await db.query('select word from public.dictionary where word ~ $1 limit 1',[[...letters.toLowerCase()].join('.*')])).rows[0].word;
+ const day=dayKey(), letters='GRT';
+ const answer=(await db.query('select word from public.dictionary where word ~ $1 and word=public.normalize_word(word) limit 1',[[...letters.toLowerCase()].join('.*')])).rows[0].word;
  const player=async()=>{const id=randomUUID();await db.query('insert into auth.users values($1)',[id]);await db.query("select set_config('test.uid',$1,false)",[id]);return id};
  const play=async(action='status',guess=null,id=null,d=day)=>(await db.query('select public.play($1,$2,$3,$4) as game',[action,guess,id,d])).rows[0].game;
  const p1=await player();let s=await play();assert.equal(s.letters,letters);assert.equal(s.done,false);assert.deepEqual(s.rankings,[]);assert.equal(s.answer_count,0);
@@ -26,8 +32,18 @@ test('server validates, locks, gates results, and counts distinct players',async
  for(let i=0;i<4;i++)s=await play('submit','invalidword',randomUUID());
  assert.equal(s.attempts.length,3);assert.equal(s.done,true);assert.equal(s.rankings[0].count,1);
  await player();s=await play('submit',answer,randomUUID());assert.equal(s.rankings.length,1);assert.equal(s.rankings[0].count,2);assert.equal(s.answer_count,2);
- const different=(await db.query("select word from public.dictionary where word <> $1 and word ~ $2 limit 1",[answer,[...letters.toLowerCase()].join('.*')])).rows[0].word;
+ const different=(await db.query("select word from public.dictionary where word <> $1 and word ~ $2 and word=public.normalize_word(word) limit 1",[answer,[...letters.toLowerCase()].join('.*')])).rows[0].word;
  await player();s=await play('submit',different,randomUUID());assert.equal(s.rankings[0].word,answer);assert.equal(s.rankings[1].word,different);
+ // Two plural/singular submissions aggregate into the same canonical result.
+ await player();s=await play('submit','greats',randomUUID());assert.equal(s.answer,'great');
+ await player();s=await play('submit','great',randomUUID());assert.equal(s.answer,'great');
+ assert.ok(s.rankings.find(r=>r.word==='great').count>=2);
+ assert.equal((await db.query("select public.normalize_word('children') as word")).rows[0].word,'child');
+ await assert.rejects(db.query("insert into public.word_forms values ('forged','notindictionary')"));
+ const before=await db.query('select player,day,attempts,answer from public.daily_games order by player');
+ await db.exec(fs.readFileSync(new URL('../supabase/update-v2/01-prepare.sql',import.meta.url),'utf8'));
+ await db.exec(fs.readFileSync(new URL('../supabase/update-v2/02-enable-normalization.sql',import.meta.url),'utf8'));
+ assert.deepEqual((await db.query('select player,day,attempts,answer from public.daily_games order by player')).rows,before.rows);
  await db.exec('set role authenticated');
  await assert.rejects(db.query('select * from public.daily_games'));
  await assert.rejects(db.query("insert into public.dictionary values ('forgedword')"));

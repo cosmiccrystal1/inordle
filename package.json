@@ -1,1 +1,1 @@
-{"name":"inordle","private":true,"type":"module","scripts":{"test":"node --test tests/*.test.js","start":"python -m http.server 8000"},"devDependencies":{"@electric-sql/pglite":"^0.3.14"}}
+{"name":"inordle","private":true,"type":"module","scripts":{"test":"node --test tests/*.test.js","start":"python -m http.server 8000"},"devDependencies":{"@electric-sql/pglite":"^0.3.14","pluralize":"^8.0.0"}}

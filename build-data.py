@@ -12,4 +12,5 @@ print(len(words),'filtered dictionary entries')
 
 # Keep the prevalidated trail catalog in sync with dictionary changes.
 import subprocess,sys
+subprocess.run(["node",str(p/"build-normalization.mjs")],cwd=p,check=True)
 subprocess.run([sys.executable,str(p/"build-trails.py")],check=True)

@@ -1,5 +1,5 @@
 import { config } from './config.js?v=20261109-4';
-import { dayKey, demoPuzzle, evaluate } from './game.js';
+import { dayKey, demoPuzzle, evaluate, normalizeWord, rankingStats } from './game.js?v=20261109-5';
 const $=id=>document.getElementById(id);
 const live=Boolean(config.url && config.key);
 let state, dictionary, busy=false, session, pending;
@@ -26,7 +26,7 @@ function render(){
  $('answer-count').textContent=Number(state.answer_count??(state.answer?1:0)).toLocaleString()+' ANSWERS TODAY';
  $('date').textContent=new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'UTC'}).format(new Date(state.day+'T12:00:00Z')).toUpperCase();
  $('number').textContent='#'+Math.floor((Date.parse(state.day)-Date.parse('2026-01-01'))/86400000+1);
- $('tiles').replaceChildren(...[...state.letters].map(c=>{const e=document.createElement('span');e.className='tile';e.textContent=c;return e}));
+ $('tiles').replaceChildren(...[...state.letters].map(c=>{const e=document.createElement('span');e.className='tile';const letter=document.createElement('span');letter.className='tile-letter';letter.textContent=c;e.append(letter);return e}));
  $('attempts').replaceChildren(...Array.from({length:3},(_,i)=>{const e=document.createElement('span');e.className=i<state.attempts.length?(state.answer&&i===state.attempts.length-1?'won':'used'):'';return e}));
  $('remaining').textContent=state.done?(state.answer?'Solved!':'Out of attempts!'):`${3-state.attempts.length} attempts remaining`;
  $('word').disabled=state.done||busy;$('submit').disabled=state.done||busy;
@@ -34,16 +34,23 @@ function render(){
  $('results').hidden=!state.done;
  if(state.done){
  $('message').textContent=state.answer?'Congrats, come back for a new trail tomorrow!':'Not a valid word! Tough luck, try again tomorrow!';
- const rows=state.rankings||[]; const total=rows.reduce((n,r)=>n+Number(r.count),0);
- $('result-info').textContent=live?`${total.toLocaleString()} discovered words · ${rows.length} unique words - most common to least common`:'Local demo: only your answer appears here. Connect the backend for community results.';
- $('ranking').replaceChildren(...rows.map((r,i)=>{const e=document.createElement('li');e.style.setProperty('--bar',100*Number(r.count)/Number(rows[0].count)+'%');const name=document.createElement('span');name.textContent=`${i+1}. ${r.word}${r.word===state.answer?' · you':''}`;const count=document.createElement('span');count.textContent=Number(r.count).toLocaleString()+' '+(Number(r.count)===1?'player':'players');e.append(name,count);return e}));
+ const rows=rankingStats(state.rankings||[],state.answer); const total=rows.reduce((n,r)=>n+r.count,0);
+ $('result-info').textContent=live?`${total.toLocaleString()} solved · ${rows.length} unique words`:"You're offline!";
+ $('ranking').replaceChildren(...rows.map((r,i)=>{
+  const e=document.createElement('li');
+  e.style.setProperty('--bar',r.percent+'%');
+  if(r.selected){e.classList.add('selected-answer');e.setAttribute('aria-current','true');e.setAttribute('aria-label',`${r.word}, your selected word, ${r.label}`);}
+  const name=document.createElement('span');name.textContent=`${i+1}. ${r.word}`;
+  const count=document.createElement('span');count.className='ranking-count';count.textContent=r.label;
+  e.append(name,count);return e;
+ }));
  if(!rows.length)$('result-info').textContent+=' · No accepted answers yet.';
  }
 }
 async function load(){
  state=live?await rpc('status'):localState();
  render();
- if(!state.done)$('message').textContent='Loading...';
+ if(!state.done)$('message').textContent="Solve the puzzle before viewing today's results!";
 }
 $('form').addEventListener('submit',async event=>{
  event.preventDefault();if(busy||state?.done)return;
@@ -62,10 +69,10 @@ $('form').addEventListener('submit',async event=>{
  }else{
  // Serialize same-origin tabs where Web Locks is supported.
  const submit=async()=>{state=localState();if(state.done)return;if(!dictionary)dictionary=new Set(await (await fetch('data/words.json')).json());
- const valid=evaluate(word,state.letters,dictionary);state.attempts.push(word);if(valid)state.answer=word;state.done=valid||state.attempts.length>=3;state.rankings=valid?[{word,count:1}]:[];storage.set('inordle-demo-'+state.day,JSON.stringify(state));};
+ const valid=evaluate(word,state.letters,dictionary),canonical=valid?normalizeWord(word):word;state.attempts.push(canonical);if(valid)state.answer=canonical;state.done=valid||state.attempts.length>=3;state.rankings=valid?[{word:canonical,count:1}]:[];storage.set('inordle-demo-'+state.day,JSON.stringify(state));};
  if(navigator.locks)await navigator.locks.request('inordle-demo',submit);else await submit();
  }
- $('word').value='';render();if(!state.done)$('message').textContent='Not a valid word!';
+ $('word').value='';render();if(!state.done)$('message').textContent='Not a valid word!';else if(state.answer&&normalizeWord(word)!==word)$('message').textContent=`Accepted as ${normalizeWord(word)}. Come back for a new trail tomorrow!`;
  }catch(error){$('message').textContent=error.message;}
  finally{busy=false;if(state){$('word').disabled=state.done;$('submit').disabled=state.done;}}
 });
