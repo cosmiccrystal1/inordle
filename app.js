@@ -1,4 +1,4 @@
-import { config } from './config.js';
+import { config } from './config.js?v=20261109-4';
 import { dayKey, demoPuzzle, evaluate } from './game.js';
 const $=id=>document.getElementById(id);
 const live=Boolean(config.url && config.key);
