@@ -66,17 +66,23 @@ test('three years of deterministic puzzles with rare vowels',()=>{
  assert.equal(sizes.size,4);assert.ok(vowelDays>=90&&vowelDays<=92);
 });
 test('dictionary, formatting, and moderation',()=>{
- assert.ok(evaluate('great','GRT',words));assert.equal(evaluate('grtzzzz','GRT',words),false);
+ assert.ok(evaluate('grateful','GRT',words));assert.equal(evaluate('grtzzzz','GRT',words),false);
  assert.equal(evaluate('<script>','ST',words),false);assert.equal(evaluate('great!','GRT',words),false);
  const blocked=fs.readFileSync(new URL('../data/blocked.txt',import.meta.url),'utf8').split(/\r?\n/).filter(w=>/^[a-z]+$/.test(w));
  for(const w of blocked)assert.equal(words.has(w),false,w);
 });
 
-test('non-attempt entries are rejected before dictionary or trail validation',()=>{
+test('only 6–20 letter uncensored dictionary entries can use an attempt',()=>{
  const blocked=new Set(JSON.parse(fs.readFileSync(new URL('../data/blocked-words.json',import.meta.url))));
- for(const word of ['a','a'.repeat(33),'a'.repeat(1000),'great!',...blocked])assert.ok(submissionRejection(word,blocked));
- assert.equal(submissionRejection('notarealword',blocked),null);
- assert.equal(submissionRejection('garden',blocked),null);
+ for(const word of ['','a','great'])assert.equal(submissionRejection(word,blocked,words),'Too short');
+ for(const word of ['a'.repeat(21),'a'.repeat(1000)])assert.equal(submissionRejection(word,blocked,words),'Too long');
+ for(const word of ['great!','notarealword','asshole'])assert.equal(submissionRejection(word,blocked,words),'Not a word');
+ assert.equal(submissionRejection('garden',blocked,words),null);
+ assert.equal(submissionRejection('gardens',blocked,words),null);
+ assert.equal(submissionRejection('groves',blocked,words),'Too short');
+ const twenty=[...words].find(w=>w.length===20&&normalizeWord(w)===w&&!blocked.has(w));
+ assert.ok(twenty);assert.equal(submissionRejection(twenty,blocked,words),null);
+ assert.equal(evaluate('great','GRT',words),false);
 });
 test('word tiles identify ordered, misplaced, inserted and repeated trail letters',()=>{
  assert.deepEqual(letterAlignment('grove','GRV').map(x=>x.kind),['trail','trail','added','trail','added']);

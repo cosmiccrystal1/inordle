@@ -1,12 +1,20 @@
 import { config } from './config.js?v=20261109-4';
-import { dayKey, demoPuzzle, evaluate, normalizeWord, rankingStats, submissionRejection } from './game.js?v=20261109-6';
-import { renderBoard, fitWords, captureBoard, animateAttempt } from './board.js?v=20261109-6';
+import { dayKey, demoPuzzle, evaluate, normalizeWord, rankingStats, submissionRejection } from './game.js?v=20261109-7';
+import { renderBoard, fitWords, captureBoard, animateAttempt } from './board.js?v=20261109-7';
+import { showSubmissionError, initializeInstructions } from './ui.js?v=20261109-7';
 const $=id=>document.getElementById(id);
 const live=Boolean(config.url && config.key);
 let state, dictionary, busy=false, session, pending;
+let dictionaryPromise;
+function loadDictionary(){
+ return dictionaryPromise ||= fetch('data/words.json?v=20261109-7').then(response=>{
+  if(!response.ok)throw new Error('Could not load dictionary. Please refresh.');
+  return response.json();
+ }).then(words=>dictionary=new Set(words)).catch(error=>{dictionaryPromise=null;throw error;});
+}
 let blockedPromise;
 function loadBlocked(){
- return blockedPromise ||= fetch('data/blocked-words.json?v=20261109-6').then(response=>{
+ return blockedPromise ||= fetch('data/blocked-words.json?v=20261109-7').then(response=>{
   if(!response.ok)throw new Error('Could not load word moderation. Please refresh.');
   return response.json();
  }).then(words=>new Set(words)).catch(error=>{blockedPromise=null;throw error;});
@@ -32,11 +40,13 @@ async function rpc(action,word=null,id=null,day=null){
 function localState(){const day=dayKey();return JSON.parse(storage.get('inordle-demo-'+day)||'null')||{day,letters:demoPuzzle(day),attempts:[],answer:null,done:false,rankings:[]};}
 function render(){
  $('answer-count').textContent=Number(state.answer_count??(state.answer?1:0)).toLocaleString()+' ANSWERS TODAY';
- $('date').textContent=new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'UTC'}).format(new Date(state.day+'T12:00:00Z')).toUpperCase();
- $('number').textContent='#'+Math.floor((Date.parse(state.day)-Date.parse('2026-01-01'))/86400000+1);
+ $('number').textContent=new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'UTC'}).format(new Date(state.day+'T12:00:00Z')).toUpperCase();
  renderBoard(state);
  $('attempts').replaceChildren(...Array.from({length:3},(_,i)=>{const e=document.createElement('span');e.className=i<state.attempts.length?(state.answer&&i===state.attempts.length-1?'won':'used'):'';return e}));
  $('remaining').textContent=state.done?(state.answer?'Solved!':'Out of attempts!'):`${3-state.attempts.length} attempts remaining`;
+ $('form').hidden=state.done;
+ $('message').hidden=state.done;
+ document.querySelector('.trail-caption').hidden=state.done;
  $('word').disabled=state.done||busy;$('submit').disabled=state.done||busy;
  $('results').hidden=!state.done;
  document.querySelector('.how').hidden=state.done;
@@ -56,7 +66,7 @@ function render(){
  }
 }
 async function load(){
- const [,game]=await Promise.all([loadBlocked(),live?rpc('status'):Promise.resolve(localState())]);
+ const [,,game]=await Promise.all([loadBlocked(),loadDictionary(),live?rpc('status'):Promise.resolve(localState())]);
  state=game;
  render();
  if(!state.done)$('message').textContent="Solve the puzzle before viewing today's results!";
@@ -64,12 +74,12 @@ async function load(){
 $('form').addEventListener('submit',async event=>{
  event.preventDefault();if(busy||state?.done)return;
  const word=$('word').value.trim().toLowerCase();
- if(!word)return;
  const previousCount=state.attempts.length,previousDay=state.day,snapshot=captureBoard();
  busy=true;render();$('message').textContent='Checking your word…';
  try{
- const rejection=submissionRejection(word,await loadBlocked());
- if(rejection){$('message').textContent=rejection;return;}
+ const [blocked,words]=await Promise.all([loadBlocked(),loadDictionary()]);
+ const rejection=submissionRejection(word,blocked,words);
+ if(rejection){showSubmissionError(rejection);$('message').textContent="Solve the puzzle before viewing today's results!";return;}
  if(live){
  pending ||= JSON.parse(storage.get('inordle-pending')||'null');
  if(pending && pending.day!==state.day){storage.set('inordle-pending','null');pending=null;}
@@ -80,11 +90,11 @@ $('form').addEventListener('submit',async event=>{
  pending=null;storage.set('inordle-pending','null');
  }else{
  // Serialize same-origin tabs where Web Locks is supported.
- const submit=async()=>{state=localState();if(state.done)return;if(!dictionary)dictionary=new Set(await (await fetch('data/words.json')).json());
+ const submit=async()=>{state=localState();if(state.done)return;if(!dictionary)await loadDictionary();
  const valid=evaluate(word,state.letters,dictionary),canonical=valid?normalizeWord(word):word;state.attempts.push(canonical);if(valid)state.answer=canonical;state.done=valid||state.attempts.length>=3;state.rankings=valid?[{word:canonical,count:1}]:[];storage.set('inordle-demo-'+state.day,JSON.stringify(state));};
  if(navigator.locks)await navigator.locks.request('inordle-demo',submit);else await submit();
  }
- if(state.rejection){render();$('message').textContent=state.rejection;return;}
+ if(state.rejection){render();showSubmissionError(state.rejection);$('message').textContent="Solve the puzzle before viewing today's results!";return;}
  $('word').value='';render();
  if(state.day===previousDay&&state.attempts.length>previousCount)await animateAttempt(snapshot,state);
  if(!state.done)$('message').textContent='Not a valid word!';else if(state.answer&&normalizeWord(word)!==word)$('message').textContent=`Accepted as ${normalizeWord(word)}. Come back for a new trail tomorrow!`;
@@ -92,7 +102,7 @@ $('form').addEventListener('submit',async event=>{
  finally{busy=false;if(state){$('word').disabled=state.done;$('submit').disabled=state.done;}}
 });
 $('refresh').onclick=async()=>{try{await load()}catch(e){$('message').textContent=e.message}};
-$('help').onclick=()=>$('rules').showModal();$('close-help').onclick=()=>$('rules').close();
+$('help').onclick=()=>{if(!$('rules').open)$('rules').showModal();};$('close-help').onclick=()=>$('rules').close();
 window.addEventListener('storage',event=>{if(!live&&event.key?.startsWith('inordle-demo-'))load().catch(()=>{})});
 setInterval(()=>{
  const now=new Date();let next=Date.now()+60000;
@@ -104,6 +114,7 @@ setInterval(()=>{
 },1000);
 $('mode').textContent=live?'':'LOCAL DEMO · answer count is for this browser only';
 $('submit').disabled=true;
+initializeInstructions();
 load().catch(error=>{$('message').textContent='Could not open today’s puzzle. '+error.message;});
 
 new ResizeObserver(fitWords).observe($('word-board'));

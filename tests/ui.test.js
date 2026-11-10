@@ -1,0 +1,34 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {showSubmissionError,initializeInstructions,ERROR_LIFETIME} from '../ui.js';
+test('submission popup lasts three seconds, resets on repeat errors, and shakes the prompt',t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ const previousDocument=globalThis.document,previousWindow=globalThis.window;
+ const calls=[];
+ const toast={hidden:true,textContent:'',animate:(frames,options)=>{calls.push({target:'toast',frames,options});return {cancel(){}}}};
+ const prompt={animate:(frames,options)=>{calls.push({target:'prompt',frames,options});return {cancel(){}}}};
+ globalThis.document={getElementById:id=>id==='error-toast'?toast:prompt};
+ globalThis.window={matchMedia:()=>({matches:false})};
+ t.after(()=>{globalThis.document=previousDocument;globalThis.window=previousWindow;});
+ showSubmissionError('Too short');
+ assert.equal(toast.hidden,false);assert.equal(toast.textContent,'Too short');
+ assert.equal(calls.find(x=>x.target==='toast').options.duration,ERROR_LIFETIME);
+ assert.ok(calls.find(x=>x.target==='prompt').frames.some(x=>x.transform!=='translateX(0)'));
+ t.mock.timers.tick(2999);assert.equal(toast.hidden,false);
+ t.mock.timers.tick(1);assert.equal(toast.hidden,true);assert.equal(toast.textContent,'');
+ showSubmissionError('Too long');t.mock.timers.tick(2000);showSubmissionError('Not a word');
+ t.mock.timers.tick(1000);assert.equal(toast.hidden,false);assert.equal(toast.textContent,'Not a word');
+ t.mock.timers.tick(2000);assert.equal(toast.hidden,true);
+});
+test('instructions automatically open once and remember dismissal',t=>{
+ const previousDocument=globalThis.document,previousStorage=globalThis.localStorage;
+ const saved=new Map(),listeners=[];let opens=0;
+ const dialog={open:false,addEventListener:(name,callback)=>listeners.push(callback),showModal(){this.open=true;opens++;}};
+ globalThis.document={getElementById:()=>dialog};
+ globalThis.localStorage={getItem:key=>saved.get(key),setItem:(key,value)=>saved.set(key,value)};
+ t.after(()=>{globalThis.document=previousDocument;globalThis.localStorage=previousStorage;});
+ initializeInstructions();assert.equal(opens,1);assert.equal(dialog.open,true);
+ dialog.open=false;listeners[0]();
+ assert.equal(saved.get('inordle-instructions-seen'),'1');
+ initializeInstructions();assert.equal(opens,1);assert.equal(dialog.open,false);
+});

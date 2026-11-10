@@ -1,5 +1,5 @@
-import { trails, trailWeights } from './trails.js?v=20261109-6';
-import { normalizeWord } from './normalization.js?v=20261109-6';
+import { trails, trailWeights } from './trails.js?v=20261109-7';
+import { normalizeWord } from './normalization.js?v=20261109-7';
 export { normalizeWord };
 export function dayKey(date = new Date()) {
  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date).map(x=>[x.type,x.value]));
@@ -15,7 +15,7 @@ export function demoPuzzle(day) {
  const pool=(rare?trails.vowels:trails.consonants).filter(t=>t.length===target);
  return weightedTrail(pool,trailWeights,n);
 }
-export function evaluate(word,letters,dictionary) { return /^[a-z]{2,32}$/.test(word) && dictionary.has(word) && dictionary.has(normalizeWord(word)) && matches(normalizeWord(word),letters); }
+export function evaluate(word,letters,dictionary) { return /^[a-z]{6,20}$/.test(word) && /^[a-z]{6,20}$/.test(normalizeWord(word)) && dictionary.has(word) && dictionary.has(normalizeWord(word)) && matches(normalizeWord(word),letters); }
 
 export function weightedTrail(pool,weights,dayNumber) {
  const modulus=2147483647n;
@@ -34,9 +34,13 @@ export function rankingStats(rows,answer) {
  });
 }
 
-export function submissionRejection(word,blocked) {
- if(!/^[a-z]{2,32}$/.test(word))return 'Use 2–32 English letters. No attempt used.';
- if(blocked.has(word)||blocked.has(normalizeWord(word)))return 'That word cannot be submitted. No attempt used.';
+export function submissionRejection(word,blocked,dictionary) {
+ if(word.length<6)return 'Too short';
+ if(word.length>20)return 'Too long';
+ if(!/^[a-z]+$/.test(word)||blocked.has(word)||blocked.has(normalizeWord(word))||!dictionary.has(word)||!dictionary.has(normalizeWord(word)))return 'Not a word';
+ const canonical=normalizeWord(word);
+ if(canonical.length<6)return 'Too short';
+ if(canonical.length>20)return 'Too long';
  return null;
 }
 // Longest ordered alignment, with deterministic tie-breaking for duplicate letters.

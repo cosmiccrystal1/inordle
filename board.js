@@ -1,4 +1,4 @@
-import { letterAlignment, normalizeWord } from './game.js?v=20261109-6';
+import { letterAlignment, normalizeWord } from './game.js?v=20261109-7';
 const reducedMotion=()=>window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 function originalTile(letter){
  const tile=document.createElement('span');tile.className='tile';
@@ -15,7 +15,7 @@ export function renderBoard(state){
   row.setAttribute('aria-label',`${correct?'Correct':'Incorrect'} attempt ${index+1}: ${word}`);
   for(const letter of letterAlignment(correct?normalizeWord(word):word,state.letters)){
    const tile=document.createElement('span');tile.className='word-tile is-'+letter.kind;
-   tile.textContent=letter.letter;if(letter.trailIndex!==null)tile.dataset.trailIndex=letter.trailIndex;
+   const face=document.createElement('span');face.className='word-letter';face.textContent=letter.letter;tile.append(face);if(letter.trailIndex!==null)tile.dataset.trailIndex=letter.trailIndex;
    row.append(tile);
   }
   return row;

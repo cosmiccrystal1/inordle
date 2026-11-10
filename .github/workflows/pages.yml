@@ -27,7 +27,7 @@ jobs:
       - name: Prepare public files
         run: |
           mkdir dist
-          cp index.html style.css app.js board.js theme.js game.js trails.js normalization.js config.js README.md dist/
+          cp index.html style.css app.js board.js ui.js theme.js game.js trails.js normalization.js config.js README.md dist/
           cp -r assets dist/assets
           mkdir dist/data
           cp data/blocked-words.json data/words.json data/DICTIONARY-LICENSE data/BLOCKLIST-LICENSE data/PLURALIZE-LICENSE data/WORDFREQ-NOTICE.md data/WORDFREQ-UPSTREAM-NOTICE.md dist/data/

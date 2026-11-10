@@ -57,14 +57,23 @@ begin
  -- Row lock makes parallel requests atomic. Request IDs make network retries idempotent.
  if action='submit' then
   w := public.normalize_word(raw_word);
-  if raw_word !~ '^[a-z]{2,32}$' then
-   eligible := false; rejection := 'Use 2–32 English letters. No attempt used.';
-  elsif exists(select 1 from public.blocked_words where word=raw_word or word=w) then
-   eligible := false; rejection := 'That word cannot be submitted. No attempt used.';
+  if length(raw_word)<6 then
+   eligible := false; rejection := 'Too short';
+  elsif length(raw_word)>20 then
+   eligible := false; rejection := 'Too long';
+  elsif raw_word !~ '^[a-z]+$'
+   or exists(select 1 from public.blocked_words where word=raw_word or word=w)
+   or not exists(select 1 from public.dictionary where word=raw_word)
+   or not exists(select 1 from public.dictionary where word=w) then
+   eligible := false; rejection := 'Not a word';
+  elsif length(w)<6 then
+   eligible := false; rejection := 'Too short';
+  elsif length(w)>20 then
+   eligible := false; rejection := 'Too long';
   end if;
  end if;
  if action='submit' and eligible and g.answer is null and cardinality(g.attempts)<3 and not(request_id=any(g.requests)) then
-  valid := raw_word ~ '^[a-z]{2,32}$' and exists(select 1 from public.dictionary where word=raw_word)
+  valid := raw_word ~ '^[a-z]{6,20}$' and exists(select 1 from public.dictionary where word=raw_word)
    and exists(select 1 from public.dictionary where word=w)
    and w ~ ('.*' || array_to_string(regexp_split_to_array(lower(letters),''),'.*') || '.*');
   update public.daily_games set attempts=array_append(attempts,w), requests=array_append(requests,request_id), answer=case when valid then w else null end

@@ -17,39 +17,41 @@ test('server validates, locks, gates results, and counts distinct players',async
  await db.exec(fs.readFileSync(new URL('../supabase/update-v2/02-enable-normalization.sql',import.meta.url),'utf8'));
  await db.exec(fs.readFileSync(new URL('../supabase/update-v3/01-prepare.sql',import.meta.url),'utf8'));
  await db.exec(fs.readFileSync(new URL('../supabase/update-v3/03-attempt-validation.sql',import.meta.url),'utf8'));
+ await db.exec(fs.readFileSync(new URL('../supabase/update-v4/03-submission-rules.sql',import.meta.url),'utf8'));
  assert.equal((await db.query("select public.trail((now() at time zone 'America/New_York')::date) as letters")).rows[0].letters,'GRT');
  const parity=await db.query("select d::date::text as day, public.trail_weighted(d::date) as letters from generate_series(date '2026-01-01',date '2028-12-31',interval '1 day') as d");
  for(const row of parity.rows)assert.equal(row.letters,demoPuzzle(row.day),row.day);
  const day=dayKey(), letters='GRT';
- const answer=(await db.query('select word from public.dictionary where word ~ $1 and word=public.normalize_word(word) limit 1',[[...letters.toLowerCase()].join('.*')])).rows[0].word;
+ const answer=(await db.query('select word from public.dictionary where word ~ $1 and length(word) between 6 and 20 and word=public.normalize_word(word) limit 1',[[...letters.toLowerCase()].join('.*')])).rows[0].word;
  const player=async()=>{const id=randomUUID();await db.query('insert into auth.users values($1)',[id]);await db.query("select set_config('test.uid',$1,false)",[id]);return id};
  const play=async(action='status',guess=null,id=null,d=day)=>(await db.query('select public.play($1,$2,$3,$4) as game',[action,guess,id,d])).rows[0].game;
  const p1=await player();let s=await play();assert.equal(s.letters,letters);assert.equal(s.done,false);assert.deepEqual(s.rankings,[]);assert.equal(s.answer_count,0);
  const blocked=JSON.parse(fs.readFileSync(new URL('../data/blocked-words.json',import.meta.url)));
- for(const word of ['','a','a'.repeat(33),'a'.repeat(1000),'great!',blocked[0]]){
+ for(const word of ['','a','great','a'.repeat(21),'a'.repeat(1000),'great!','notarealword','groves',blocked[0]]){
   s=await play('submit',word,randomUUID());assert.ok(s.rejection);assert.equal(s.attempts.length,0);assert.equal(s.done,false);
  }
- const retry=randomUUID();s=await play('submit','notarealword',retry);assert.equal(s.attempts.length,1);
- s=await play('submit','notarealword',retry);assert.equal(s.attempts.length,1);
+ const retry=randomUUID();s=await play('submit','garden',retry);assert.equal(s.attempts.length,1);
+ s=await play('submit','garden',retry);assert.equal(s.attempts.length,1);
  await assert.rejects(play('submit',answer,randomUUID(),'2000-01-01'));
  s=await play('submit',answer,randomUUID());assert.equal(s.answer,answer);assert.equal(s.done,true);assert.equal(s.rankings[0].count,1);
  s=await play('submit','different',randomUUID());assert.equal(s.attempts.length,2);assert.equal(s.answer,answer);
  await player();s=await play();assert.deepEqual(s.rankings,[]);assert.equal(s.answer_count,1);
- for(let i=0;i<4;i++)s=await play('submit','invalidword',randomUUID());
+ for(let i=0;i<4;i++)s=await play('submit','garden',randomUUID());
  assert.equal(s.attempts.length,3);assert.equal(s.done,true);assert.equal(s.rankings[0].count,1);
  await player();s=await play('submit',answer,randomUUID());assert.equal(s.rankings.length,1);assert.equal(s.rankings[0].count,2);assert.equal(s.answer_count,2);
- const different=(await db.query("select word from public.dictionary where word <> $1 and word ~ $2 and word=public.normalize_word(word) limit 1",[answer,[...letters.toLowerCase()].join('.*')])).rows[0].word;
+ const different=(await db.query("select word from public.dictionary where word <> $1 and word ~ $2 and length(word) between 6 and 20 and word=public.normalize_word(word) limit 1",[answer,[...letters.toLowerCase()].join('.*')])).rows[0].word;
  await player();s=await play('submit',different,randomUUID());assert.equal(s.rankings[0].word,answer);assert.equal(s.rankings[1].word,different);
  // Two plural/singular submissions aggregate into the same canonical result.
- await player();s=await play('submit','greats',randomUUID());assert.equal(s.answer,'great');
- await player();s=await play('submit','great',randomUUID());assert.equal(s.answer,'great');
- assert.ok(s.rankings.find(r=>r.word==='great').count>=2);
+ await player();s=await play('submit','garnets',randomUUID());assert.equal(s.answer,'garnet');
+ await player();s=await play('submit','garnet',randomUUID());assert.equal(s.answer,'garnet');
+ assert.ok(s.rankings.find(r=>r.word==='garnet').count>=2);
  assert.equal((await db.query("select public.normalize_word('children') as word")).rows[0].word,'child');
  await assert.rejects(db.query("insert into public.word_forms values ('forged','notindictionary')"));
  const before=await db.query('select player,day,attempts,answer from public.daily_games order by player');
  await db.exec(fs.readFileSync(new URL('../supabase/update-v2/01-prepare.sql',import.meta.url),'utf8'));
  await db.exec(fs.readFileSync(new URL('../supabase/update-v2/02-enable-normalization.sql',import.meta.url),'utf8'));
  await db.exec(fs.readFileSync(new URL('../supabase/update-v3/03-attempt-validation.sql',import.meta.url),'utf8'));
+ await db.exec(fs.readFileSync(new URL('../supabase/update-v4/03-submission-rules.sql',import.meta.url),'utf8'));
  assert.deepEqual((await db.query('select player,day,attempts,answer from public.daily_games order by player')).rows,before.rows);
  await db.exec('set role authenticated');
  await assert.rejects(db.query('select * from public.daily_games'));

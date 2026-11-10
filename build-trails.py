@@ -17,7 +17,7 @@ sys.path.insert(0,str(p/'.build-deps'))
 from wordfreq import zipf_frequency
 forms=json.loads((p/'data/singular-forms.json').read_text(encoding='utf-8'))
 # Only canonical dictionary words count. Plural variants cannot pad the solution minimum.
-canonical=sorted({forms.get(w,w) for w in words})
+canonical=sorted(w for w in {forms.get(w,w) for w in words} if 6<=len(w)<=20)
 frequencies={w:round(zipf_frequency(w,'en')*100) for w in canonical}
 # Require eight attested solutions with Zipf >= 2.5 (roughly 3 per ten million words).
 ordered=sorted((w for w in canonical if frequencies[w]>=250),key=lambda w:(-frequencies[w],w))
