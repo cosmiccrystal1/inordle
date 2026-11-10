@@ -1,0 +1,1 @@
+Existing v2 deployments: run all three SQL files in numeric order. See UPDATE-V3.md. No dictionary reimport required.

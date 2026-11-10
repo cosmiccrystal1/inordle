@@ -15,6 +15,8 @@ test('server validates, locks, gates results, and counts distinct players',async
  await db.exec(fs.readFileSync(new URL('../supabase/update-v2/01-prepare.sql',import.meta.url),'utf8'));
  await db.exec(fs.readFileSync(new URL('../supabase/trails.sql',import.meta.url),'utf8'));
  await db.exec(fs.readFileSync(new URL('../supabase/update-v2/02-enable-normalization.sql',import.meta.url),'utf8'));
+ await db.exec(fs.readFileSync(new URL('../supabase/update-v3/01-prepare.sql',import.meta.url),'utf8'));
+ await db.exec(fs.readFileSync(new URL('../supabase/update-v3/03-attempt-validation.sql',import.meta.url),'utf8'));
  assert.equal((await db.query("select public.trail((now() at time zone 'America/New_York')::date) as letters")).rows[0].letters,'GRT');
  const parity=await db.query("select d::date::text as day, public.trail_weighted(d::date) as letters from generate_series(date '2026-01-01',date '2028-12-31',interval '1 day') as d");
  for(const row of parity.rows)assert.equal(row.letters,demoPuzzle(row.day),row.day);
@@ -23,6 +25,10 @@ test('server validates, locks, gates results, and counts distinct players',async
  const player=async()=>{const id=randomUUID();await db.query('insert into auth.users values($1)',[id]);await db.query("select set_config('test.uid',$1,false)",[id]);return id};
  const play=async(action='status',guess=null,id=null,d=day)=>(await db.query('select public.play($1,$2,$3,$4) as game',[action,guess,id,d])).rows[0].game;
  const p1=await player();let s=await play();assert.equal(s.letters,letters);assert.equal(s.done,false);assert.deepEqual(s.rankings,[]);assert.equal(s.answer_count,0);
+ const blocked=JSON.parse(fs.readFileSync(new URL('../data/blocked-words.json',import.meta.url)));
+ for(const word of ['','a','a'.repeat(33),'a'.repeat(1000),'great!',blocked[0]]){
+  s=await play('submit',word,randomUUID());assert.ok(s.rejection);assert.equal(s.attempts.length,0);assert.equal(s.done,false);
+ }
  const retry=randomUUID();s=await play('submit','notarealword',retry);assert.equal(s.attempts.length,1);
  s=await play('submit','notarealword',retry);assert.equal(s.attempts.length,1);
  await assert.rejects(play('submit',answer,randomUUID(),'2000-01-01'));
@@ -43,6 +49,7 @@ test('server validates, locks, gates results, and counts distinct players',async
  const before=await db.query('select player,day,attempts,answer from public.daily_games order by player');
  await db.exec(fs.readFileSync(new URL('../supabase/update-v2/01-prepare.sql',import.meta.url),'utf8'));
  await db.exec(fs.readFileSync(new URL('../supabase/update-v2/02-enable-normalization.sql',import.meta.url),'utf8'));
+ await db.exec(fs.readFileSync(new URL('../supabase/update-v3/03-attempt-validation.sql',import.meta.url),'utf8'));
  assert.deepEqual((await db.query('select player,day,attempts,answer from public.daily_games order by player')).rows,before.rows);
  await db.exec('set role authenticated');
  await assert.rejects(db.query('select * from public.daily_games'));

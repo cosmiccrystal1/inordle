@@ -37,6 +37,7 @@ for kind,candidates in groups.items():
   # Every 1-point rise in Zipf corresponds to a tenfold rise in frequency.
   mean=sum(frequencies[w] for w in solutions)/800
   weight=max(1,min(10000,int(math.floor(10**(mean-2)+0.5))))
+  if weight<200:continue
   weights[trail]=weight
   quality[trail]={'solutions':solutions,'zipf100':[frequencies[w] for w in solutions],'weight':weight}
   accepted.append(trail)

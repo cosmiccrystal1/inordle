@@ -1,0 +1,1 @@
+Run all SQL files in numeric filename order. Follow UPDATE.md. Do not rerun schema.sql or dictionary.sql. All files preserve existing player records.
