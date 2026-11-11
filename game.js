@@ -1,4 +1,4 @@
-import { trails, trailWeights } from './trails.js?v=20261111-1';
+import { trails, trailWeights } from './trails.js?v=20261111-2';
 export function dayKey(date = new Date()) {
  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date).map(x=>[x.type,x.value]));
  return `${parts.year}-${parts.month}-${parts.day}`;

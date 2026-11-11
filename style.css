@@ -24,8 +24,6 @@
 .word-tile{width:var(--word-size,44px);height:calc(var(--word-size,44px)*1.12);flex:0 0 auto;display:grid;place-items:center;border-radius:5px;background:#d9d9df;color:#32323b;font-size:clamp(12px,calc(var(--word-size,44px)*.55),25px);font-weight:700;will-change:transform,opacity}
 .word-tile.is-trail{background:var(--accent);color:#fff}
 .word-tile.is-misplaced{background:var(--subaccent);color:#fff}
-.confetti-layer{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:1000}
-.confetti-piece{position:absolute;display:block;pointer-events:none;will-change:transform,opacity}
 .how[hidden]{display:none}
 @media(prefers-reduced-motion:reduce){.word-tile{will-change:auto}}
 
@@ -34,8 +32,8 @@
 .word-letter{display:block;pointer-events:none;transition:transform 150ms ease}
 .word-tile.is-trail{background:transparent;--word-face:var(--trail-color);--word-shadow:var(--tile-shadow)}
 .word-tile.is-misplaced{background:transparent;--word-face:var(--subaccent);--word-shadow:color-mix(in srgb,var(--subaccent) 70%,black)}
-.word-tile:hover::before{transform:translateY(5px);box-shadow:0 0 0 var(--word-shadow)}
-.word-tile:hover .word-letter{transform:translateY(5px)}
+.solved-word .word-tile:hover::before{transform:translateY(5px);box-shadow:0 0 0 var(--word-shadow)}
+.solved-word .word-tile:hover .word-letter{transform:translateY(5px)}
 .word-row{row-gap:10px}
 .error-toast{position:fixed;z-index:2000;left:50%;top:50%;transform:translate(-50%,-50%);padding:20px 30px;max-width:calc(100vw - 40px);border:1px solid var(--line);border-radius:12px;background:var(--text);color:var(--bg);box-shadow:0 10px 40px #0004;font-size:18px;font-weight:700;text-align:center;pointer-events:none}
 .error-toast[hidden],#form[hidden],#message[hidden],.trail-caption[hidden]{display:none}
@@ -48,7 +46,12 @@
 .mode-switch button[aria-pressed="true"]{color:#21051e}
 header{display:grid;grid-template-columns:1fr auto 1fr;gap:8px}
 .header-actions{justify-self:end}
-#new-trail{padding:0;font-size:inherit}
+#new-trail{padding:0 4px;font-size:28px;line-height:1;text-decoration:none}
 #daily-status[hidden],#new-trail[hidden]{display:none}
 @media(max-width:400px){header{padding-inline:12px}.header-actions{gap:4px}.mode-switch button{padding-inline:6px}}
 @media(prefers-reduced-motion:reduce){.mode-switch::before{transition:none}}
+
+.incorrect-word .word-tile::after{content:'';position:absolute;left:0;top:50%;width:calc(100% + 4px);height:1px;background:var(--text);opacity:.4;pointer-events:none;transform-origin:left}
+.incorrect-word .word-tile:last-child::after{width:100%}
+.draw-strike .word-tile::after{animation:draw-strike 100ms ease-out var(--strike-delay) both}
+@keyframes draw-strike{from{transform:scaleX(0)}to{transform:scaleX(1)}}

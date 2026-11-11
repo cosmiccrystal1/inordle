@@ -1,11 +1,12 @@
 import { config } from './config.js?v=20261109-4';
-import { dayKey, demoPuzzle, evaluate, randomTrail, rankingStats, submissionRejection } from './game.js?v=20261111-1';
-import { renderBoard, fitWords, captureBoard, animateAttempt } from './board.js?v=20261111-1';
-import { showSubmissionError, initializeInstructions } from './ui.js?v=20261111-1';
+import { dayKey, demoPuzzle, evaluate, randomTrail, rankingStats, submissionRejection } from './game.js?v=20261111-2';
+import { renderBoard, fitWords, captureBoard, animateAttempt } from './board.js?v=20261111-2';
+import { showSubmissionError, initializeInstructions } from './ui.js?v=20261111-2';
 const $=id=>document.getElementById(id);
 const live=Boolean(config.url && config.key);
 let state, dictionary, busy=false, session, pending;
 let mode='daily', endlessState, statusRequest;
+let advancePending=false;
 const dailyPrompt="Solve the puzzle before viewing today's results!";
 const currentGame=()=>mode==='daily'?state:endlessState;
 
@@ -14,14 +15,14 @@ function newEndlessTrail(){
 }
 let dictionaryPromise;
 function loadDictionary(){
- return dictionaryPromise ||= fetch('data/words.json?v=20261111-1').then(response=>{
+ return dictionaryPromise ||= fetch('data/words.json?v=20261111-2').then(response=>{
   if(!response.ok)throw new Error('Could not load dictionary. Please refresh.');
   return response.json();
  }).then(words=>dictionary=new Set(words)).catch(error=>{dictionaryPromise=null;throw error;});
 }
 let blockedPromise;
 function loadBlocked(){
- return blockedPromise ||= fetch('data/blocked-words.json?v=20261111-1').then(response=>{
+ return blockedPromise ||= fetch('data/blocked-words.json?v=20261111-2').then(response=>{
   if(!response.ok)throw new Error('Could not load word moderation. Please refresh.');
   return response.json();
  }).then(words=>new Set(words)).catch(error=>{blockedPromise=null;throw error;});
@@ -78,7 +79,11 @@ function render(){
  $('form').hidden=game.done;
  $('message').hidden=game.done;
  document.querySelector('.trail-caption').hidden=game.done;
- $('word').disabled=game.done||busy;$('submit').disabled=game.done||busy;
+ const wordInput=$('word');
+ wordInput.placeholder=daily?'Enter a word…':'Space to continue...';
+ wordInput.disabled=game.done||(daily&&busy);
+ wordInput.readOnly=!daily&&busy;
+ $('submit').disabled=game.done||busy;
 
  document.querySelector('.how').hidden=game.done;
  if(game.done){
@@ -125,19 +130,28 @@ function selectMode(next){
  $('word').value='';
  $('message').textContent=mode==='daily'?dailyPrompt:'';
  render();
+ if(mode==='endless')$('word').focus({preventScroll:true});
  refreshDaily();
 }
 
 $('daily-tab').onclick=()=>selectMode('daily');
 $('endless-tab').onclick=()=>selectMode('endless');
-$('new-trail').onclick=()=>{
- if(busy)return;
+function advanceEndless(){
+ if(mode!=='endless')return;
+ if(busy){advancePending=true;return;}
  newEndlessTrail();
  $('word').value='';
  $('message').textContent='';
  render();
- $('word').focus();
-};
+ $('word').focus({preventScroll:true});
+}
+$('new-trail').onclick=advanceEndless;
+document.addEventListener('keydown',event=>{
+ if(mode!=='endless'||event.key!==' '||event.isComposing||event.ctrlKey||event.metaKey||event.altKey||$('rules').open)return;
+ if(event.target instanceof HTMLElement && event.target.closest('button,a') && event.target!==$('new-trail'))return;
+ event.preventDefault();
+ if(!event.repeat)advanceEndless();
+});
 $('form').addEventListener('submit',async event=>{
  event.preventDefault();
  const game=currentGame();
@@ -145,6 +159,7 @@ $('form').addEventListener('submit',async event=>{
  const word=$('word').value.trim().toLowerCase();
  const previousCount=game.attempts.length,previousDay=game.day,snapshot=captureBoard();
  busy=true;render();$('message').textContent='Checking your word…';
+ if(mode==='endless')$('word').focus({preventScroll:true});
  try{
  const [blocked,words]=await Promise.all([loadBlocked(),loadDictionary()]);
  const rejection=submissionRejection(word,blocked,words);
@@ -156,7 +171,7 @@ $('form').addEventListener('submit',async event=>{
   $('word').value='';
   $('message').textContent=correct?'':'That word doesn’t fit the trail.';
   render();
-  await animateAttempt(snapshot,game);
+  await animateAttempt(snapshot);
   return;
  }
  await statusRequest?.catch(()=>{});
@@ -178,13 +193,19 @@ $('form').addEventListener('submit',async event=>{
  }
  if(state.rejection){render();showSubmissionError(state.rejection);$('message').textContent="Solve the puzzle before viewing today's results!";return;}
  $('word').value='';render();
- if(state.day===previousDay&&state.attempts.length>previousCount)await animateAttempt(snapshot,state);
+ if(state.day===previousDay&&state.attempts.length>previousCount)await animateAttempt(snapshot);
  if(!state.done)$('message').textContent='That word doesn’t fit the trail.';
  }catch(error){$('message').textContent=error.message;}
  finally{
   busy=false;
+  $('word').readOnly=false;
   $('word').disabled=currentGame().done;
+  if(mode==='endless')$('word').focus({preventScroll:true});
   $('submit').disabled=currentGame().done;
+  if(advancePending){
+   advancePending=false;
+   advanceEndless();
+  }
  }
 });
 setInterval(refreshDaily,10000);
