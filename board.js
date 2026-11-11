@@ -1,4 +1,4 @@
-import { letterAlignment } from './game.js?v=20261111-2';
+import { letterAlignment } from './game.js?v=20261111-3';
 const reducedMotion=()=>window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 function originalTile(letter){
  const tile=document.createElement('span');tile.className='tile';
@@ -16,7 +16,6 @@ export function renderBoard(state){
   for(const letter of letterAlignment(word,state.letters)){
    const tile=document.createElement('span');tile.className='word-tile is-'+letter.kind;
    const face=document.createElement('span');face.className='word-letter';face.textContent=letter.letter;tile.append(face);if(letter.trailIndex!==null)tile.dataset.trailIndex=letter.trailIndex;
-   if(!correct)tile.style.setProperty('--strike-delay', (180 * row.children.length / word.length)+'ms');
    row.append(tile);
   }
   return row;
@@ -26,9 +25,14 @@ export function renderBoard(state){
 export function fitWords(){
  const board=document.getElementById('word-board');if(!board)return;
  const width=board.clientWidth;
+ if(!width)return;
  for(const row of board.querySelectorAll('.word-row')){
-  const size=Math.max(18,Math.min(44,(width-4*(row.children.length-1))/row.children.length));
+  const count=row.children.length;
+  const gap=Math.min(4,width/(count*6));
+  const size=Math.min(44,(width-gap*(count-1))/count);
   row.style.setProperty('--word-size',size+'px');
+  row.style.setProperty('--word-gap',gap+'px');
+  row.style.setProperty('--row-width',size*count+gap*(count-1)+'px');
  }
 }
 export function captureBoard(){
@@ -41,17 +45,27 @@ export function circInFrames(){return Array.from({length:41},(_,i)=>{
  const t=i/40,eased=1-Math.sqrt(1-t*t);
  return {offset:t,opacity:eased,transform:`translateY(${(1-eased)*12}px) scale(${.6+.4*eased})`};
 });}
-export async function animateAttempt(snapshot){
+export async function animateAttempt(snapshot,signal){
  const row=document.querySelector('#attempt-words .word-row:last-child');
- if(!row||reducedMotion()||typeof document.querySelector('.puzzle').animate!=='function')return;
+ if(signal?.aborted||!row||reducedMotion()||typeof document.querySelector('.puzzle').animate!=='function')return;
  const puzzle=document.querySelector('.puzzle'),correct=row.classList.contains('solved-word');
+ const activeAnimations=[];
+ function animate(element,frames,options){
+  const animation=element.animate(frames,options);
+  activeAnimations.push(animation);
+  return animation;
+ }
+ const cancel=()=>activeAnimations.forEach(animation=>animation.cancel());
+ signal?.addEventListener('abort',cancel,{once:true});
+ try{
  row.style.opacity='0';
  const height=puzzle.getBoundingClientRect().height;
- const expansion=puzzle.animate([{height:snapshot.height+'px'},{height:height+'px'}],{duration:200,easing:'ease-out'});
+ const expansion=animate(puzzle,[{height:snapshot.height+'px'},{height:height+'px'}],{duration:200,easing:'ease-out'});
  await finished(expansion);
+ if(signal?.aborted)return;
  if(!correct){
   row.classList.add('draw-strike');
-  await finished(row.animate([{opacity:0},{opacity:1}],{duration:330,easing:'ease-out',fill:'forwards'}));
+  await finished(animate(row,[{opacity:0},{opacity:1}],{duration:330,easing:'ease-out',fill:'forwards'}));
   row.style.opacity='1';return;
  }
  row.style.opacity='1';
@@ -59,12 +73,15 @@ export async function animateAttempt(snapshot){
  for(const tile of row.children){
   if(tile.dataset.trailIndex!==undefined){
    const source=snapshot.origins[Number(tile.dataset.trailIndex)],target=tile.getBoundingClientRect();
-   if(source)animations.push(tile.animate([
+   if(source)animations.push(animate(tile,[
     {transform:`translate(${source.left+source.width/2-target.left-target.width/2}px, ${source.top+source.height/2-target.top-target.height/2}px) scale(${source.width/target.width},${source.height/target.height})`},
     {transform:'translate(0,0)'}
    ],{duration:650,easing:'cubic-bezier(.22,1,.36,1)'}));
-  }else animations.push(tile.animate(circInFrames(),{duration:650,delay:100,fill:'both',easing:'linear'}));
+  }else animations.push(animate(tile,circInFrames(),{duration:650,delay:100,fill:'both',easing:'linear'}));
  }
  await Promise.all(animations.map(finished));
- row.animate([{filter:'brightness(1.55)'},{filter:'brightness(1)'}],{duration:360,easing:'ease-out'});
+ if(!signal?.aborted)await finished(animate(row,[{filter:'brightness(1.55)'},{filter:'brightness(1)'}],{duration:360,easing:'ease-out'}));
+ }finally{
+  signal?.removeEventListener('abort',cancel);
+ }
 }

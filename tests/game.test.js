@@ -3,7 +3,7 @@ import {trails,trailWeights} from '../trails.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {dayKey,matches,demoPuzzle,evaluate,randomTrail,rankingStats,weightedTrail,submissionRejection,letterAlignment} from '../game.js';
+import {dayKey,matches,demoPuzzle,evaluate,randomTrail,rankingStats,weightedTrail,submissionRejection,letterAlignment,startBlitzRound,blitzRemaining,endExpiredBlitz,recordBlitzSolution,formatBlitzTime} from '../game.js';
 const words=new Set(JSON.parse(fs.readFileSync(new URL('../data/words.json',import.meta.url))));
 test('letters must occur in order, including repeated letters',()=>{
  assert.equal(matches('great','GRT'),true);assert.equal(matches('alligator','GRT'),false);
@@ -40,7 +40,7 @@ test('plural and singular forms are independently eligible and match their own l
  assert.ok(evaluate('gardens','GRDS',words));
  assert.equal(evaluate('garden','GRDS',words),false);
 });
-test('Endless draws from both eligible pools and replaces the previous trail',()=>{
+test('Casual draws from both eligible pools and replaces the previous trail',()=>{
  assert.equal(randomTrail(undefined,()=>0),trails.consonants[0]);
  assert.equal(randomTrail(undefined,()=>.999999),trails.vowels.at(-1));
  assert.equal(randomTrail(trails.consonants[0],()=>0),trails.consonants[1]);
@@ -101,4 +101,31 @@ test('inserted letters follow easeInCirc timing from invisible to visible',()=>{
  const halfway=frames.find(frame=>frame.offset===.5);
  assert.ok(Math.abs(halfway.opacity-(1-Math.sqrt(.75)))<1e-12);
  for(let i=1;i<frames.length;i++)assert.ok(frames[i].opacity>=frames[i-1].opacity);
+});
+
+
+test('Blitz draws only two-to-four-letter trails',()=>{
+ const pool=[...trails.consonants,...trails.vowels].filter(trail=>trail.length<=4);
+ for(let i=0;i<pool.length;i++)assert.equal(randomTrail(undefined,()=>(i+.5)/pool.length,4),pool[i]);
+});
+
+test('Blitz awards length and spacing points immediately, adds time and locks at the deadline',()=>{
+ const round=startBlitzRound(1000);
+ assert.equal(blitzRemaining(round,1000),120000);
+ assert.equal(formatBlitzTime(120),'2:00');
+ assert.equal(recordBlitzSolution(round,'great','GR',2000),true);
+ assert.equal(round.points,80);
+ assert.equal(blitzRemaining(round,2000),124000);
+ assert.equal(recordBlitzSolution(round,'grateful','GTF',3000),true);
+ assert.equal(round.points,230);
+ assert.equal(recordBlitzSolution(round,'rattle','RTE',4000),true);
+ assert.equal(round.points,360);
+ assert.equal(round.solutions,3);
+ assert.equal(round.deadline,136000);
+ assert.equal(recordBlitzSolution(round,'wrong','RT',10000),false);
+ assert.equal(recordBlitzSolution(round,'rattle','RTE',136000),false);
+ assert.equal(endExpiredBlitz(round,145000),true);
+ assert.equal(blitzRemaining(round,145000),0);
+ assert.equal(formatBlitzTime((round.endedAt-round.startedAt)/1000),'2:15');
+ assert.equal(endExpiredBlitz(round,150000),false);
 });

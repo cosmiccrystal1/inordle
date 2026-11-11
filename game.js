@@ -1,4 +1,4 @@
-import { trails, trailWeights } from './trails.js?v=20261111-2';
+import { trails, trailWeights } from './trails.js?v=20261111-3';
 export function dayKey(date = new Date()) {
  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date).map(x=>[x.type,x.value]));
  return `${parts.year}-${parts.month}-${parts.day}`;
@@ -35,8 +35,8 @@ export function rankingStats(rows,answer) {
 }
 
 const endlessTrails = [...trails.consonants, ...trails.vowels];
-export function randomTrail(previous, random = Math.random) {
- const pool = endlessTrails.filter(trail => trail !== previous);
+export function randomTrail(previous, random = Math.random, maxLength = 5) {
+ const pool = endlessTrails.filter(trail => trail !== previous && trail.length <= maxLength);
  return pool[Math.floor(random() * pool.length)];
 }
 
@@ -70,4 +70,39 @@ export function letterAlignment(word,trail) {
   missing.set(letter, remaining - 1);
   return {letter, trailIndex: null, kind: 'misplaced'};
  });
+}
+
+
+export function startBlitzRound(now) {
+ return {startedAt:now, deadline:now+120000, endedAt:null, points:0, solutions:0};
+}
+
+export function blitzRemaining(round, now) {
+ return round.endedAt === null ? Math.max(0, round.deadline-now) : 0;
+}
+
+export function endExpiredBlitz(round, now) {
+ if (round.endedAt !== null || now < round.deadline) return false;
+ round.endedAt=round.deadline;
+ return true;
+}
+
+export function recordBlitzSolution(round, word, trail, now) {
+ if (!blitzRemaining(round, now) || !matches(word, trail)) return false;
+ let nextIndex=0;
+ const answer=word.toLowerCase();
+ const separated=[...trail.toLowerCase()].every(letter=>{
+  const index=answer.indexOf(letter,nextIndex);
+  if(index<0)return false;
+  nextIndex=index+2;
+  return true;
+ });
+ round.points+=50+10*(word.length-trail.length)+(separated?50:0);
+ round.solutions++;
+ round.deadline+=5000;
+ return true;
+}
+
+export function formatBlitzTime(seconds) {
+ return `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`;
 }
