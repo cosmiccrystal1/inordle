@@ -1,6 +1,4 @@
-import { trails, trailWeights } from './trails.js?v=20261109-7';
-import { normalizeWord } from './normalization.js?v=20261109-7';
-export { normalizeWord };
+import { trails, trailWeights } from './trails.js?v=20261111-1';
 export function dayKey(date = new Date()) {
  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date).map(x=>[x.type,x.value]));
  return `${parts.year}-${parts.month}-${parts.day}`;
@@ -15,7 +13,9 @@ export function demoPuzzle(day) {
  const pool=(rare?trails.vowels:trails.consonants).filter(t=>t.length===target);
  return weightedTrail(pool,trailWeights,n);
 }
-export function evaluate(word,letters,dictionary) { return /^[a-z]{6,20}$/.test(word) && /^[a-z]{6,20}$/.test(normalizeWord(word)) && dictionary.has(word) && dictionary.has(normalizeWord(word)) && matches(normalizeWord(word),letters); }
+export function evaluate(word, letters, dictionary) {
+ return /^[a-z]{2,50}$/.test(word) && dictionary.has(word) && matches(word, letters);
+}
 
 export function weightedTrail(pool,weights,dayNumber) {
  const modulus=2147483647n;
@@ -30,17 +30,20 @@ export function rankingStats(rows,answer) {
  const total=rows.reduce((sum,row)=>sum+Number(row.count),0);
  return rows.map(row=>{
   const count=Number(row.count),percent=total?100*count/total:0;
-  return {...row,count,percent,label:`${count.toLocaleString()} ${count===1?'player':'players'}  (${percent.toFixed(2)}%)`,selected:normalizeWord(row.word)===normalizeWord(answer||'')};
+  return {...row,count,percent,label:`${count.toLocaleString()} ${count===1?'player':'players'}  (${percent.toFixed(2)}%)`,selected:row.word===answer};
  });
 }
 
-export function submissionRejection(word,blocked,dictionary) {
- if(word.length<6)return 'Too short';
- if(word.length>20)return 'Too long';
- if(!/^[a-z]+$/.test(word)||blocked.has(word)||blocked.has(normalizeWord(word))||!dictionary.has(word)||!dictionary.has(normalizeWord(word)))return 'Not a word';
- const canonical=normalizeWord(word);
- if(canonical.length<6)return 'Too short';
- if(canonical.length>20)return 'Too long';
+const endlessTrails = [...trails.consonants, ...trails.vowels];
+export function randomTrail(previous, random = Math.random) {
+ const pool = endlessTrails.filter(trail => trail !== previous);
+ return pool[Math.floor(random() * pool.length)];
+}
+
+export function submissionRejection(word, blocked, dictionary) {
+ if (word.length < 2) return 'Too short';
+ if (word.length > 50) return 'Too long';
+ if (!/^[a-z]+$/.test(word) || blocked.has(word) || !dictionary.has(word)) return 'Not a word';
  return null;
 }
 // Longest ordered alignment, with deterministic tie-breaking for duplicate letters.
@@ -54,5 +57,17 @@ export function letterAlignment(word,trail) {
   if(required[i]===chars[j]){matched.set(j,i);i++;j++;}
   else if(dp[i][j+1]>=dp[i+1][j])j++;else i++;
  }
- return chars.map((letter,index)=>({letter,trailIndex:matched.has(index)?matched.get(index):null,kind:matched.has(index)?'trail':required.includes(letter)?'misplaced':'added'}));
+ // Only unfilled trail slots can justify a misplaced letter. Extra copies are neutral.
+ const missing = new Map();
+ const filled = new Set(matched.values());
+ required.forEach((letter, index) => {
+  if (!filled.has(index)) missing.set(letter, (missing.get(letter) ?? 0) + 1);
+ });
+ return chars.map((letter, index) => {
+  if (matched.has(index)) return {letter, trailIndex: matched.get(index), kind: 'trail'};
+  const remaining = missing.get(letter) ?? 0;
+  if (!remaining) return {letter, trailIndex: null, kind: 'added'};
+  missing.set(letter, remaining - 1);
+  return {letter, trailIndex: null, kind: 'misplaced'};
+ });
 }

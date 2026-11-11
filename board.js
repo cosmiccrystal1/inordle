@@ -1,4 +1,4 @@
-import { letterAlignment, normalizeWord } from './game.js?v=20261109-7';
+import { letterAlignment } from './game.js?v=20261111-1';
 const reducedMotion=()=>window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 function originalTile(letter){
  const tile=document.createElement('span');tile.className='tile';
@@ -10,10 +10,10 @@ export function renderBoard(state){
  const list=document.getElementById('attempt-words');
  list.replaceChildren(...state.attempts.map((word,index)=>{
   const row=document.createElement('li');
-  const correct=Boolean(state.answer)&&index===state.attempts.length-1;
+  const correct=state.correctAttempts ? state.correctAttempts[index] : Boolean(state.answer) && index === state.attempts.length - 1;
   row.className='word-row'+(correct?' solved-word':'');
   row.setAttribute('aria-label',`${correct?'Correct':'Incorrect'} attempt ${index+1}: ${word}`);
-  for(const letter of letterAlignment(correct?normalizeWord(word):word,state.letters)){
+  for(const letter of letterAlignment(word,state.letters)){
    const tile=document.createElement('span');tile.className='word-tile is-'+letter.kind;
    const face=document.createElement('span');face.className='word-letter';face.textContent=letter.letter;tile.append(face);if(letter.trailIndex!==null)tile.dataset.trailIndex=letter.trailIndex;
    row.append(tile);
@@ -43,7 +43,7 @@ export function circInFrames(){return Array.from({length:41},(_,i)=>{
 export async function animateAttempt(snapshot,state){
  const row=document.querySelector('#attempt-words .word-row:last-child');
  if(!row||reducedMotion()||typeof document.querySelector('.puzzle').animate!=='function')return;
- const puzzle=document.querySelector('.puzzle'),correct=Boolean(state.answer);
+ const puzzle=document.querySelector('.puzzle'),correct=row.classList.contains('solved-word');
  row.style.opacity='0';
  const height=puzzle.getBoundingClientRect().height;
  const expansion=puzzle.animate([{height:snapshot.height+'px'},{height:height+'px'}],{duration:200,easing:'ease-out'});

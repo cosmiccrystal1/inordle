@@ -1,10 +1,9 @@
 import {circInFrames} from '../board.js';
 import {trails,trailWeights} from '../trails.js';
-import {singularForms} from '../normalization.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {dayKey,matches,demoPuzzle,evaluate,normalizeWord,rankingStats,weightedTrail,submissionRejection,letterAlignment} from '../game.js';
+import {dayKey,matches,demoPuzzle,evaluate,randomTrail,rankingStats,weightedTrail,submissionRejection,letterAlignment} from '../game.js';
 const words=new Set(JSON.parse(fs.readFileSync(new URL('../data/words.json',import.meta.url))));
 test('letters must occur in order, including repeated letters',()=>{
  assert.equal(matches('great','GRT'),true);assert.equal(matches('alligator','GRT'),false);
@@ -19,7 +18,7 @@ test('New York winter and summer midnight boundaries',()=>{
  assert.equal(dayKey(new Date('2026-03-09T03:59:59Z')),'2026-03-08');
  assert.equal(dayKey(new Date('2026-11-02T04:59:59Z')),'2026-11-01');
 });
-test('every catalog trail has eight distinct canonical solutions and frequency weights',()=>{
+test('every catalog trail has eight distinct solutions and frequency weights',()=>{
  const quality=JSON.parse(fs.readFileSync(new URL('../data/trail-quality.json',import.meta.url)));
  const sizes=new Set();
  for(const [kind,pool] of Object.entries(trails)) for(const trail of pool){
@@ -27,7 +26,7 @@ test('every catalog trail has eight distinct canonical solutions and frequency w
   const vowels=[...trail].filter(c=>'AEIOU'.includes(c)).length;
   assert.equal(vowels,kind==='vowels'?1:0);assert.ok(vowels<trail.length/2);
   const q=quality[trail];assert.equal(new Set(q.solutions).size,8);
-  for(const word of q.solutions){assert.equal(normalizeWord(word),word);assert.ok(evaluate(word,trail,words));}
+  for(const word of q.solutions){assert.ok(evaluate(word,trail,words));}
   assert.ok(q.zipf100.every(f=>f>=250));
   const mean=q.zipf100.reduce((a,b)=>a+b,0)/800;
   assert.ok(trailWeights[trail]>=200);
@@ -36,17 +35,18 @@ test('every catalog trail has eight distinct canonical solutions and frequency w
  }
  assert.equal(sizes.size,4);
 });
-test('plurals normalize safely and idempotently before trail validation',()=>{
- for(const [plural,singular] of Object.entries(singularForms)){
-  assert.ok(words.has(plural));assert.ok(words.has(singular));assert.equal(normalizeWord(singular),singular);
- }
- for(const [plural,singular] of [['gardens','garden'],['children','child'],['mice','mouse'],['leaves','leaf'],['stories','story']])assert.equal(normalizeWord(plural),singular);
- for(const word of ['glass','news','species','status','constructor','toString','__proto__'])assert.equal(normalizeWord(word),word);
- assert.ok(evaluate('gardens','GRD',words));assert.equal(evaluate('gardens','GRDS',words),false);
- assert.equal(evaluate('notadictionarywords','ND',words),false);
+test('plural and singular forms are independently eligible and match their own letters',()=>{
+ assert.ok(evaluate('garden','GRD',words));
+ assert.ok(evaluate('gardens','GRDS',words));
+ assert.equal(evaluate('garden','GRDS',words),false);
+});
+test('Endless draws from both eligible pools and replaces the previous trail',()=>{
+ assert.equal(randomTrail(undefined,()=>0),trails.consonants[0]);
+ assert.equal(randomTrail(undefined,()=>.999999),trails.vowels.at(-1));
+ assert.equal(randomTrail(trails.consonants[0],()=>0),trails.consonants[1]);
 });
 test('rankings use all solved players as the denominator',()=>{
- const rows=rankingStats([{word:'garden',count:5},{word:'great',count:1}],'gardens');
+ const rows=rankingStats([{word:'garden',count:5},{word:'great',count:1}],'garden');
  assert.ok(Math.abs(rows[0].percent-100*5/6)<1e-9);assert.equal(rows[0].label,'5 players  (83.33%)');assert.equal(rows[0].selected,true);
  assert.equal(rows[1].label,'1 player  (16.67%)');assert.equal(rows[1].selected,false);
  assert.deepEqual(rankingStats([],null),[]);
@@ -72,21 +72,24 @@ test('dictionary, formatting, and moderation',()=>{
  for(const w of blocked)assert.equal(words.has(w),false,w);
 });
 
-test('only 6–20 letter uncensored dictionary entries can use an attempt',()=>{
+test('only 2–50 letter uncensored dictionary entries can use an attempt',()=>{
  const blocked=new Set(JSON.parse(fs.readFileSync(new URL('../data/blocked-words.json',import.meta.url))));
- for(const word of ['','a','great'])assert.equal(submissionRejection(word,blocked,words),'Too short');
- for(const word of ['a'.repeat(21),'a'.repeat(1000)])assert.equal(submissionRejection(word,blocked,words),'Too long');
+ for(const word of ['','a'])assert.equal(submissionRejection(word,blocked,words),'Too short');
+ for(const word of ['a'.repeat(51),'a'.repeat(1000)])assert.equal(submissionRejection(word,blocked,words),'Too long');
  for(const word of ['great!','notarealword','asshole'])assert.equal(submissionRejection(word,blocked,words),'Not a word');
  assert.equal(submissionRejection('garden',blocked,words),null);
  assert.equal(submissionRejection('gardens',blocked,words),null);
- assert.equal(submissionRejection('groves',blocked,words),'Too short');
- const twenty=[...words].find(w=>w.length===20&&normalizeWord(w)===w&&!blocked.has(w));
- assert.ok(twenty);assert.equal(submissionRejection(twenty,blocked,words),null);
- assert.equal(evaluate('great','GRT',words),false);
+ assert.equal(submissionRejection('groves',blocked,words),null);
+ const fixture = new Set(['go','a'.repeat(50)]);
+ for (const word of fixture) assert.equal(submissionRejection(word,blocked,fixture),null);
+ assert.ok(evaluate('great','GRT',words));
 });
 test('word tiles identify ordered, misplaced, inserted and repeated trail letters',()=>{
  assert.deepEqual(letterAlignment('grove','GRV').map(x=>x.kind),['trail','trail','added','trail','added']);
  assert.deepEqual(letterAlignment('gtr','GRT').map(x=>x.kind),['trail','misplaced','trail']);
+ assert.deepEqual(letterAlignment('gtrt','GRT').map(x=>x.kind),['trail','added','trail','trail']);
+ assert.deepEqual(letterAlignment('gttr','GRT').map(x=>x.kind),['trail','misplaced','added','trail']);
+ assert.deepEqual(letterAlignment('gtr','GRTT').map(x=>x.kind),['trail','misplaced','trail']);
  const repeated=letterAlignment('letter','TTR').filter(x=>x.kind==='trail');
  assert.deepEqual(repeated.map(x=>x.trailIndex),[0,1,2]);
  assert.equal(new Set(repeated.map(x=>x.trailIndex)).size,3);

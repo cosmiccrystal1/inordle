@@ -1,5 +1,5 @@
 -- Fresh setup: schema.sql, dictionary.sql, word-forms/*.sql, blocked-words.sql, then trails.sql.
-create table public.dictionary(word text primary key check(word ~ '^[a-z]{2,32}$'));
+create table public.dictionary(word text primary key check(word ~ '^[a-z]{2,50}$'));
 create table public.daily_games(
  player uuid not null references auth.users(id) on delete cascade,
  day date not null,
@@ -41,7 +41,6 @@ declare
  g public.daily_games%rowtype;
  letters text := public.trail(d);
  w text := lower(btrim(guess));
- raw_word text := lower(btrim(guess));
  valid boolean;
  eligible boolean := true;
  rejection text := null;
@@ -56,33 +55,25 @@ begin
  select * into g from public.daily_games where player=uid and day=d for update;
  -- Row lock makes parallel requests atomic. Request IDs make network retries idempotent.
  if action='submit' then
-  w := public.normalize_word(raw_word);
-  if length(raw_word)<6 then
+  if length(w)<2 then
    eligible := false; rejection := 'Too short';
-  elsif length(raw_word)>20 then
+  elsif length(w)>50 then
    eligible := false; rejection := 'Too long';
-  elsif raw_word !~ '^[a-z]+$'
-   or exists(select 1 from public.blocked_words where word=raw_word or word=w)
-   or not exists(select 1 from public.dictionary where word=raw_word)
+  elsif w !~ '^[a-z]+$'
+   or exists(select 1 from public.blocked_words where word=w)
    or not exists(select 1 from public.dictionary where word=w) then
    eligible := false; rejection := 'Not a word';
-  elsif length(w)<6 then
-   eligible := false; rejection := 'Too short';
-  elsif length(w)>20 then
-   eligible := false; rejection := 'Too long';
   end if;
  end if;
  if action='submit' and eligible and g.answer is null and cardinality(g.attempts)<3 and not(request_id=any(g.requests)) then
-  valid := raw_word ~ '^[a-z]{6,20}$' and exists(select 1 from public.dictionary where word=raw_word)
-   and exists(select 1 from public.dictionary where word=w)
-   and w ~ ('.*' || array_to_string(regexp_split_to_array(lower(letters),''),'.*') || '.*');
+  valid := w ~ ('.*' || array_to_string(regexp_split_to_array(lower(letters),''),'.*') || '.*');
   update public.daily_games set attempts=array_append(attempts,w), requests=array_append(requests,request_id), answer=case when valid then w else null end
    where player=uid and day=d returning * into g;
  end if;
  done := g.answer is not null or cardinality(g.attempts)>=3;
  if done then
   select coalesce(jsonb_agg(jsonb_build_object('word',s.answer,'count',s.n) order by s.n desc,s.answer),'[]'::jsonb) into rows
-  from (select public.normalize_word(answer) as answer,count(*) as n from public.daily_games where day=d and answer is not null group by public.normalize_word(answer)) s;
+  from (select answer,count(*) as n from public.daily_games where day=d and answer is not null group by answer) s;
  end if;
  return jsonb_build_object('rejection',rejection,'day',d,'letters',letters,'attempts',g.attempts,'answer',g.answer,'done',done,'rankings',rows,'answer_count',(select count(*) from public.daily_games where day=d and answer is not null));
 end $$;
